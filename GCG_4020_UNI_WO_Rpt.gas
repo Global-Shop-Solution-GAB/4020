@@ -1,0 +1,451 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Variable.UDT.uWork.Define("sJob",String,Job)
+Variable.UDT.uWork.Define("sSuffix",String,Suffix)
+Variable.UDT.uWork.Define("sPart",String,Part)
+Variable.UDT.uWork.Define("sSeq",String)
+Variable.UDT.uWork.Define("iQtyComp",Float,Qty_Completed)
+Variable.UDT.uWork.Define("sLMO",String)
+Variable.uGlobal.uWork.Declare("uWork")
+Variable.UDT.uJob.Define("sJob",String,Job)
+Variable.UDT.uJob.Define("sSuffix",String,Suffix)
+Variable.UDT.uJob.Define("sSeq",String,Seq)
+Variable.UDT.uJob.Define("sLMO",String,LMO)
+Variable.UDT.uJob.Define("sPart",String,Part)
+Variable.UDT.uJob.Define("sOperation",String,Operation)
+Variable.UDT.uJob.Define("sRouter",String,Router)
+Variable.UDT.uJob.Define("iWeight",Float,Units)
+Variable.UDT.uJob.Define("iBurden",Float,Burden)
+Variable.UDT.uJob.Define("iSetup",Float,Setup)
+Variable.UDT.uJob.Define("sRouterSeq",String,Router_Seq)
+Variable.uGlobal.uJob.Declare("uJob")
+Variable.UDT.uReport.Define("iBIRUNID",Long,BIRunID)
+Variable.UDT.uReport.Define("iDieFac",Float,Die_Factor)
+Variable.UDT.uReport.Define("iDieVal",Float,Die_Value)
+Variable.UDT.uReport.Define("iLabVal",Float,Labor_Value)
+Variable.UDT.uReport.Define("iMatQty",Float,Material_Qty)
+Variable.UDT.uReport.Define("iMatVal",Float,Material_Value)
+Variable.UDT.uReport.Define("iOutQty",Float,Outside_Qty)
+Variable.UDT.uReport.Define("iOutVal",Float,Outside_Val)
+Variable.UDT.uReport.Define("iOverVal",Float,Overhead_Val)
+Variable.UDT.uReport.Define("iWipPart",Float,WIP_Parts)
+Variable.UDT.uReport.Define("iWIPQty",Float,WIP_Qty)
+Variable.UDT.uReport.Define("sJob",String,Job)
+Variable.UDT.uReport.Define("sPart",String,Part)
+Variable.UDT.uReport.Define("sSuffix",String,Suffix)
+Variable.UDT.uReport.Define("sLMO",String,LMO)
+Variable.UDT.uReport.Define("sSeq",String,Seq)
+Variable.uGlobal.uReport.Declare("uReport")
+Variable.Global.iBILogID.Declare(Long,0)
+Variable.Global.iBIRunID.Declare(Float,0)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.Intrinsic.Control.SetErrorHandler("Main_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.uGlobal.uReport.Redim(-1,-1)
+
+V.Local.sCompany.Declare(String)
+V.Local.sCompany.Set(V.Caller.CompanyCode)
+F.Intrinsic.String.Concat("GLOBAL_",V.Local.sCompany,V.Local.sCompany)
+F.ODBC.Connection!conX.OpenConnection(V.Local.sCompany,"Master","master")
+'Clear previous records from the Table
+F.ODBC.Connection!conx.OpenLocalRecordsetRW("rst","Delete GCG_4020_BI_UNI_WO")
+F.ODBC.conx!rst.Close
+
+F.Intrinsic.Control.CallSub(Getdata)
+F.Intrinsic.Control.CallSub(Savedata)
+F.Intrinsic.Control.CallSub(Unload)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Main_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4020_UNI_WO_Rpt.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Main.End
+
+Program.Sub.GetData.Start
+F.Intrinsic.Control.SetErrorHandler("GetData_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sSql.Declare(String)
+V.Local.sSeq.Declare(String)
+V.Local.icount.Declare(Long)
+V.Local.iCount2.Declare(Long)
+V.Local.iPComp.Declare(Long)
+V.Local.iLabor.Declare(Float)
+V.Local.iUpper.Declare(Long)
+V.Local.iLaborCount.Declare(Long)
+V.Local.sPart.Declare(String)
+V.Local.sRet.Declare(String)
+V.Local.sJob.Declare(String)
+V.Local.iDie.Declare(Float)
+V.Local.iRtQty.Declare(Float)
+V.Local.iDieVal.Declare(Float)
+V.Local.iWIP2.Declare(Float)
+V.Local.iMtlQty.Declare(Float)
+V.Local.iMtlVal.Declare(Float)
+V.Local.iLabVal.Declare(Float)
+V.Local.iTempWip.Declare(Float)
+V.Local.iOverhead.Declare(Float)
+V.Local.iOVal.Declare(Float)
+V.Local.iOutQty.Declare(Float)
+V.Local.iOutVal.Declare(Float)
+V.Local.iOutOrd.Declare(Float)
+V.Local.iSCost.Declare(Float)
+V.Local.iTempQty.Declare(Float)
+V.Local.iTempOrd.Declare(Float)
+V.Local.iTempval.Declare(Float)
+
+
+F.Global.BI.GetRunID(V.Global.iBIRunID)
+F.Global.BI.StartLogging(V.Global.iBIRunID,-1,-1,"",V.Global.iBILogID)
+
+'Query to get all Jobs that have not been closed.
+V.Local.sSql.Set("Select Job, Suffix, Part, Qty_Completed from Job_Header where Date_Closed = '000000' Order by Job")
+'This is to test a job to make sure the calculations work.
+'V.Local.sSql.Set("Select Job, Suffix, Part, Qty_Completed From Job_Header where Job = '204803' ")
+
+F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+'Save the Open Jobs to the uWork UDT
+F.Intrinsic.Variable.LoadUDTFromRecordset("conx","rst","V.uGlobal.uWork",False)
+F.ODBC.conx!rst.Close
+'Loop through each work order to get the Operations and the Details associated with it.
+F.Intrinsic.Control.For(V.Local.iCount,0,V.uGlobal.uWork.UBound,1)
+	
+
+
+	'Get the Sequences associated with the Job where the LMO is not "C" and the Sequence is less than "990000"
+	F.Intrinsic.String.Concat("Select Operation, Router, Job, Suffix, Seq, LMO, Part, Units, Setup, Burden, Router_Seq  from Job_Operations where Job = '",V.uGlobal.uWork(v.Local.icount)!sJob.Trim,"' and Suffix = '",V.uGlobal.uWork(v.Local.iCount)!sSuffix.Trim,"' and LMO <> 'C' and SEQ < '990000' and Flag_Set_UP <> 'Y'  Order by Seq",V.Local.sSql)
+	F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+	'Save the sequences to the uJob UDT
+	F.Intrinsic.Variable.LoadUDTFromRecordset("conx","rst","v.uGlobal.uJob",False)
+		F.ODBC.conx!rst.Close
+	F.Intrinsic.Control.If(V.uGlobal.uReport.UBound,=,-1)
+		V.uGlobal.uReport.Redim(0,0)
+	F.Intrinsic.Control.Else
+		F.Intrinsic.Math.Add(V.Local.iUpper,1,V.Local.iUpper)
+		V.uGlobal.uReport.RedimPreserve(0,V.Local.iUpper)
+
+	F.Intrinsic.Control.EndIf
+
+	'Save the Job, Suffix, Part, Seq, and the Quantity that has been WIP'ed on this Work Order
+	V.uGlobal.uReport(v.Local.iUpper)!sJob.Set(V.uGlobal.uWork(v.Local.icount)!sJob)
+	V.uGlobal.uReport(v.Local.iUpper)!sSuffix.Set(V.uGlobal.uWork(v.Local.icount)!sSuffix)
+	V.uGlobal.uReport(v.Local.iupper)!sPart.Set(V.uGlobal.uWork(v.Local.icount)!sPart)
+	V.uGlobal.uReport(v.Local.iUpper)!iWIPQty.Set(V.uGlobal.uWork(v.Local.icount)!iQtyComp)
+	'Header Records will have a Sequence of -1
+	V.uGlobal.uReport(v.Local.iUpper)!sSeq.Set(-1)
+	'Loop through each Sequence of the Work Order
+	F.Intrinsic.Control.For(V.Local.iCount2,0,V.uGlobal.uJob.UBound,1)
+		F.Intrinsic.Variable.UDTMultiSeek(V.uGlobal.uWork!sJob,V.uGlobal.uJob(v.Local.iCount2)!sJob,V.uGlobal.uWork!sSuffix,V.uGlobal.uJob(v.Local.iCount2)!sSuffix,V.Local.sJob)
+		'Add to the Upper Bounds of the uReport UDT
+		F.Intrinsic.Math.Add(V.Local.iUpper,1,V.Local.iUpper)
+		V.uGlobal.uReport.RedimPreserve(0,V.Local.iUpper)
+		'Save the information for this Sequence
+		V.uGlobal.uReport(v.Local.iUpper)!sJob.Set(V.uGlobal.uWork(v.Local.icount)!sJob)
+		V.uGlobal.uReport(v.Local.iUpper)!sSuffix.Set(V.uGlobal.uWork(v.Local.icount)!sSuffix)
+		V.uGlobal.uReport(v.Local.iUpper)!sPart.Set(V.uGlobal.uWork(v.Local.icount)!sPart)
+		V.uGlobal.uReport(v.Local.iUpper)!sLMO.Set(V.uGlobal.uJob(v.Local.icount2)!sLMO)
+		V.uGlobal.uReport(v.Local.iUpper)!sSeq.Set(V.uGlobal.uJob(v.Local.iCount2)!sSeq)
+
+		'Material Sequences
+		F.Intrinsic.Control.SelectCase(V.uGlobal.uJob(v.Local.iCount2)!sLMO)
+			F.Intrinsic.Control.Case("M")
+				'Find the First Labor Sequence that has an Op code of "BKFL"
+				F.Intrinsic.Variable.UDTMultiSeek(V.uGlobal.uJob!sLMO,"L",V.uGlobal.uJob!sOperation,"BKFL",V.Local.sRet)
+				F.Intrinsic.String.Split(V.Local.sRet,"*!*",V.Local.sRet)
+				'Check to make sure there is a Labor sequence that has the OP Code
+				F.Intrinsic.Control.If(V.Local.sRet(0),=,"")
+					'If one does not exist inform the user
+					F.Intrinsic.String.Concat("The Router: ",V.uGlobal.uJob(v.Local.iCount2)!sRouter," does not have a Labor sequence with the Op Code: BKFL!",V.Local.sRet(0))
+'					F.Intrinsic.UI.Msgbox(V.Local.sRet(0),"Router Error")
+					'Exit Loop
+					F.Intrinsic.Control.ExitFor(V.Local.iCount2)
+				F.Intrinsic.Control.EndIf
+				'Get the Pieces completed for the Labor Sequence
+				F.Intrinsic.String.Concat("Select Sum (Pieces_Compltd) as Pieces_Compltd from Job_Detail where Job = '",V.uGlobal.uJob(v.Local.sRet(0))!sJob,"' and Suffix = '",V.uGlobal.uJob(v.Local.sRet(0))!sSuffix,"' and Seq = '",V.uGlobal.uJob(v.Local.sRet(0))!sSeq,"'",V.Local.sSql)
+				F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+				V.Local.iPComp.Set(V.ODBC.conx!rst.FieldValTrim!Pieces_Compltd)
+				F.ODBC.conx!rst.Close
+				'Subtract Pieces completed from the quantity that has been WIPed
+				F.Intrinsic.Math.Sub(V.Local.iPComp,V.uGlobal.uWork(v.Local.sJob)!iQtyComp,V.Local.iMtlQty)
+				'Multiply previous value times the value in units for that sequence.
+				'This is the Material Quantity
+				F.Intrinsic.Math.Mult(V.uGlobal.uJob(v.Local.iCount2)!iWeight,V.Local.iMtlQty,V.Local.iMtlQty)
+				'Get the cost of the Material
+				F.Intrinsic.String.Concat("Select Amt_Cost from Inventory_Mstr Where Part = '",V.uGlobal.uJob(v.Local.ICount2)!sPart,"'",V.Local.sSql)
+				F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+				F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+				V.Local.sPart.Set(V.ODBC.conx!rst.FieldValTrim!Amt_Cost)
+				F.Intrinsic.Control.Else
+					V.Local.sPart.Set(0)
+				F.Intrinsic.Control.EndIf
+				F.ODBC.conx!rst.Close
+				'Multiply Cost by the material Quantity to get the Material Value
+				'This is the Material Value
+				F.Intrinsic.Math.Mult(V.Local.sPart,V.Local.iMtlQty,V.Local.iMtlVal)
+				'Save the values to the uReport UDT
+				V.uGlobal.uReport(v.Local.iUpper)!iMatQty.Set(V.Local.iMtlQty)
+				V.uGlobal.uReport(v.Local.iUpper)!iMatVal.Set(V.Local.iMtlVal)
+
+
+
+
+
+		'Labor Sequences
+			F.Intrinsic.Control.Case("L")
+			'Need to track the number of labo rsequences
+				F.Intrinsic.Math.Add(V.Local.iLaborCount,1,V.Local.iLaborCount)
+				F.Intrinsic.String.Concat("Select Sum (Pieces_Compltd) as Pieces_Compltd From Job_Detail where Job = '",V.uGlobal.uJob(v.Local.iCount2)!sJob,"' and Suffix = '",V.uGlobal.uJob(v.Local.iCount2)!sSuffix,"' and Seq = '",V.uGlobal.uJob(v.Local.icount2)!sSeq,"'",V.Local.sSql)
+				F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+				'Pieces completed for the current labor sequence
+				V.Local.iPComp.Set(V.ODBC.conx!rst.FieldValTrim!Pieces_Compltd)
+				F.ODBC.conx!rst.Close
+
+				'Calculate the WIP Quantity for the Labor Sequence
+				F.Intrinsic.Math.Sub(V.Local.iPComp,V.uGlobal.uWork(v.Local.sJob)!iQtyComp,V.Local.iWIP2)
+
+				'Get Router Quantity
+				F.Intrinsic.String.Concat("Select Quantity_1 from RTR_Price_1_4 where Router = '",V.uGlobal.uJob(v.Local.iCount2)!sRouter,"' Order by Quantity_1 Desc ",V.Local.sSql)
+'				F.Intrinsic.String.Concat(V.Local.sSql,"' Order by Quantity_1 desc",V.Local.sSql)
+
+				F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+				'Need if for when no record set is returned.
+				F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,True)
+					'Default to 1
+					V.Local.iRtQty.Set(1)
+				F.Intrinsic.Control.ElseIf(V.ODBC.conx!rst.FieldValTrim!Quantity_1,=,0)
+'					'No zero allowed set to 1
+					V.Local.iRtQty.Set(1)
+				F.Intrinsic.Control.Else
+					'Set to quantity
+					V.Local.iRtQty.Set(V.ODBC.conx!rst.FieldValTrim!Quantity_1)
+				F.Intrinsic.Control.EndIf
+				F.ODBC.conx!rst.Close
+
+				'Get Setup for the Sequence
+				F.Intrinsic.String.Concat("Select Set_up from Router_Line where Router = '",V.uGlobal.uJob(v.Local.iCount2)!sRouter,"' and Line_Router = '",V.uGlobal.uJob(v.Local.iCount2)!sRouterSeq,"'",V.Local.sSql)
+				F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+
+				F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+					V.uGlobal.uJob(v.Local.iCount2)!iSetup.Set(V.ODBC.conx!rst.FieldValTrim!Set_Up)
+				F.Intrinsic.Control.EndIf
+				F.ODBC.conx!rst.Close
+
+
+				'Get Standard Overhead from the Workcenter table
+				F.Intrinsic.String.Concat("Select Standard_Ovhd,Standard_Cost  from Workcenters where Machine = '",V.uGlobal.uJob(v.Local.iCount2)!sPart.Trim,"'",V.Local.sSql)
+				F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+				F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,False)
+					'Set the Standard Overhead and the Standard Cost
+					V.Local.iOverhead.Set(V.ODBC.conx!rst.FieldValTrim!Standard_Ovhd)
+					V.Local.iSCost.Set(V.ODBC.conx!rst.FieldValTrim!Standard_Cost)
+				F.Intrinsic.Control.Else
+					V.Local.iOverhead.Set(1)
+					V.Local.iSCost.Set(1)
+				F.Intrinsic.Control.EndIf
+				F.ODBC.conx!rst.Close
+
+				'Overhead Calculation take the setup from the router multiply by the overhead
+				F.Intrinsic.Math.Mult(V.uGlobal.uJob(v.Local.iCount2)!iSetup,V.Local.iOverhead,V.Local.iLabor)
+
+				'divide value by the qty from router
+				F.Intrinsic.Math.Div(V.Local.iLabor,V.Local.iRtQty,V.Local.iLabor)
+
+				'don't divide by 0
+				F.Intrinsic.Control.If(V.uGlobal.uJob(v.Local.iCount2)!iWeight,!=,0)
+					'divide over head by the runtime
+					F.Intrinsic.Math.Div(V.Local.iOverhead,V.uGlobal.uJob(v.Local.iCount2)!iWeight,V.Local.iLabVal)
+				F.Intrinsic.Control.EndIf
+				'Add the two values together
+				F.Intrinsic.Math.Add(V.Local.iLabor,V.Local.iLabVal,V.Local.iLabVal)
+				'Multiply by the wip for that seq
+				F.Intrinsic.Math.Mult(V.Local.iLabVal,V.Local.iWIP2,V.Local.iOVal)
+
+
+				'Now to get the Labor value calculation done which is basically the same as above you just subtract the cost from overhead first.
+				F.Intrinsic.Math.Sub(V.Local.iSCost,V.Local.iOverhead,V.Local.iOverhead)
+				F.Intrinsic.Math.Mult(V.uGlobal.uJob(v.Local.iCount2)!iSetup,V.Local.iOverhead,V.Local.iLabor)
+				F.Intrinsic.Math.Div(V.Local.iLabor,V.Local.iRtQty,V.Local.iLabor)
+				F.Intrinsic.Control.If(V.uGlobal.uJob(v.Local.iCount2)!iWeight,!=,0)
+					F.Intrinsic.Math.Div(V.Local.iOverhead,V.uGlobal.uJob(v.Local.iCount2)!iWeight,V.Local.iLabVal)
+				F.Intrinsic.Control.EndIf
+				F.Intrinsic.Math.Add(V.Local.iLabor,V.Local.iLabVal,V.Local.iLabVal)
+				F.Intrinsic.Math.Mult(V.Local.iLabVal,V.Local.iWIP2,V.Local.iLabVal)
+
+
+				F.Intrinsic.Control.If(V.Local.iLaborCount,=,1)
+				'Die Factor Retreived here.  Only done on the first labor sequence
+					F.Intrinsic.String.Concat("Select Cost from Bom_Mstr where Parent = '",V.uGlobal.uWork(v.Local.sJob)!sPart,"' and Sequence_Bom > '0000' and Part Like 'R%'",V.Local.sSql)
+					F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+					'Need if for when no record set is returned.
+					F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,True)
+						V.Local.iDie.Set(0)
+					F.Intrinsic.Control.Else
+						V.Local.iDie.Set(V.ODBC.conx!rst.FieldValTrim!Cost)
+					F.Intrinsic.Control.EndIf
+					F.ODBC.conx!rst.Close
+					'Subtract Pieces Completed from the Quantity WIPed = Die Value. Multiply Die Value by the Die Factor
+					'Die Factor Value Calculated here
+					F.Intrinsic.Math.Sub(V.Local.iPComp,V.uGlobal.uWork(v.Local.sJob)!iQtyComp,V.Local.iDieVal)
+					F.Intrinsic.Math.Mult(V.Local.iDie,V.Local.iDieVal,V.Local.iDieVal)
+					'Save the Information to the UDT Report
+					V.uGlobal.uReport(v.Local.iUpper)!iDieFac.Set(V.Local.iDie)
+					V.uGlobal.uReport(v.Local.iUpper)!iDieVal.Set(V.Local.iDieVal)
+				F.Intrinsic.Control.EndIf
+
+				'Save the Information to the UDT Report
+				V.uGlobal.uReport(v.Local.iUpper)!iWipPart.Set(V.Local.iWIP2)
+				V.uGlobal.uReport(v.Local.iUpper)!iLabVal.Set(V.Local.iLabVal)
+				V.uGlobal.uReport(v.Local.iUpper)!iOverVal.Set(V.Local.iOVal)
+
+
+
+		'Outside Sequences
+			F.Intrinsic.Control.Case("O")
+
+
+				'Get the Cost, Qty received, Qty ordered.
+				F.Intrinsic.String.Concat(" Select Qty_Received , Cost, Qty_Order   from v_PO_Lines where Job = '",V.uGlobal.uJob(v.Local.iCount2)!sJob,"' and Suffix = '",V.uGlobal.uJob(v.Local.iCount2)!sSuffix,"' and Sequence = '",V.uGlobal.uJob(v.Local.iCount2)!sSeq,"'",V.Local.sSql)
+				F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSql)
+				'Set temp variables to 0
+				V.Local.iTempWip.Set(0)
+				V.Local.iOutQty.Set(0)
+				V.Local.iOutOrd.Set(0)
+				V.Local.iOutVal.Set(0)
+				V.Local.iWIP2.Set(0)
+				'Loop through all potiential PO's
+				F.Intrinsic.Control.DoUntil(V.ODBC.conx!rst.EOF,=,True)
+					'Save the data to the temp variables
+					V.Local.iTempQty.Set(V.ODBC.conx!rst.FieldValTrim!Qty_Received)
+					V.Local.iTempOrd.Set(V.ODBC.conx!rst.FieldValTrim!Qty_Order)
+					V.Local.iTempval.Set(V.ODBC.conx!rst.FieldValTrim!Cost)
+					'Add the Qty received to a running total
+					F.Intrinsic.Math.Add(V.Local.iOutQty,V.Local.iTempQty,V.Local.iOutQty)
+					'Add the Qty Ordered to a running total
+					F.Intrinsic.Math.Add(V.Local.iOutOrd,V.Local.iTempOrd,V.Local.iOutOrd)
+
+					'subtract the qty ordered from the qty received and save in temp qty
+					F.Intrinsic.Math.Sub(V.Local.iTempOrd,V.Local.iTempQty,V.Local.iTempQty)
+					'Take the temp qty and multiply by the cost on that po
+					F.Intrinsic.Math.Mult(V.Local.iTempQty,V.Local.iTempval,V.Local.iTempWip)
+					'Add the temp outside value to a running total
+					F.Intrinsic.Math.Add(V.Local.iTempWip,V.Local.iOutVal,V.Local.iOutVal)
+					F.ODBC.conx!rst.MoveNext
+				F.Intrinsic.Control.Loop
+				F.ODBC.conx!rst.Close
+				'Take the running total for the qty ordered subtract the running total for the qty received
+				F.Intrinsic.Math.Sub(V.Local.iOutOrd,V.Local.iOutQty,V.Local.iOutQty)
+
+				'Changed Logic to Outside_Qty=sum(Qty_Received)-Qty_WIP/FG
+				'Per John R. 10/13/15
+				'To fix Comment out next 2 lines and change line V.uGlobal.uReport(V.Local.iUpper)!OutQty.Set(V.Local.iWIP2) to V.uGlobal.uReport(V.Local.iUpper)!OutQty.Set(V.Local.iOutQty)
+
+				F.Intrinsic.Math.Sub(V.Local.iOutQty,V.uGlobal.uWork(v.Local.icount)!iQtyComp,V.Local.iWIP2)
+				F.Intrinsic.Math.Mult(V.Local.iWIP2,V.Local.iTempval,V.Local.iOutVal)
+
+				'Save information to the UDT Report
+				V.uGlobal.uReport(v.Local.iUpper)!iOutQty.Set(V.Local.iWIP2)
+				V.uGlobal.uReport(v.Local.iUpper)!iOutVal.Set(V.Local.iOutVal)
+
+		F.Intrinsic.Control.EndSelect
+
+		V.Local.sSeq.Set(V.Local.iPComp)
+
+		V.Local.iLabVal.Set(0)
+		V.Local.iOverhead.Set(0)
+	F.Intrinsic.Control.Next(V.Local.iCount2)
+	'Need to reset the iLabor variable
+	V.Local.iLaborcount.Set(0)
+	V.Local.iWIP2.Set(0)
+	V.Local.iLabVal.Set(0)
+	V.Local.iOverhead.Set(0)
+	V.Local.iTempWip.Set(0)
+	V.Local.iOutQty.Set(0)
+	V.Local.iOutVal.Set(0)
+	V.Local.iMtlVal.Set(0)
+	V.Local.iMtlQty.Set(0)
+F.Intrinsic.Control.Next(V.Local.icount)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("GetData_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4020_UNI_WO_Rpt.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.GetData.End
+
+Program.Sub.SaveData.Start
+F.Intrinsic.Control.SetErrorHandler("SaveData_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+V.Local.sParam.Declare(String)
+V.Local.sVal.Declare(String)
+
+
+'
+F.Intrinsic.Variable.UDTSetMemberValue(V.uGlobal.uReport!iBIRUNID,V.Global.iBIRunID)
+F.ODBC.Connection!conx.OpenLocalRecordsetRW("rst","Select * From GCG_4020_BI_UNI_WO")
+F.Intrinsic.Variable.SaveUDTToRecordSet("conx","rst","v.uGlobal.uReport")
+F.ODBC.conx!rst.Close
+
+V.Local.sParam.Set("BIRUNID")
+V.Local.sVal.Set(V.Global.iBIRunID)
+
+F.Global.BI.StopLogging(V.Global.iBILogID)
+
+
+F.Global.BI.RunReportPreProcessor(v.Global.iBIRunID,v.Global.iBILogID,v.Local.sParam,v.Local.sVal,"",-1,True,"",-1,"",-1,"","",v.Global.iBIRunID)
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("SaveData_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4020_UNI_WO_Rpt.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.CallSub(Unload)
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.SaveData.End
+
+Program.Sub.Unload.Start
+F.Intrinsic.Control.SetErrorHandler("Unload_Err")
+F.Intrinsic.Control.ClearErrors
+
+V.Local.sError.Declare(String)
+
+'Close Connection
+F.ODBC.Connection!conx.Close
+'End the Program.
+F.Intrinsic.Control.End
+
+F.Intrinsic.Control.ExitSub
+
+F.Intrinsic.Control.Label("Unload_Err")
+F.Intrinsic.Control.If(V.Ambient.ErrorNumber,<>,0)
+	Function.Intrinsic.String.Concat("Project: GCG_4020_UNI_WO_Rpt.gas",V.Ambient.Newline,V.Ambient.Newline,"Subroutine: ",V.Ambient.CurrentSubroutine,V.Ambient.NewLine,"Error Occurred ",V.Ambient.ErrorNumber," with description ",V.Ambient.ErrorDescription,V.Local.sError)
+	F.Intrinsic.UI.Msgbox(V.Local.sError)
+	F.Intrinsic.Control.End
+Function.Intrinsic.Control.EndIf
+
+
+Program.Sub.Unload.End
+
+
