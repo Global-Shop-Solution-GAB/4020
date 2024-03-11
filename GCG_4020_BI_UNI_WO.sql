@@ -1,0 +1,17 @@
+CREATE TABLE "GCG_4020_BI_UNI_WO"(
+ "Job" CHAR(6),
+ "Suffix" CHAR(3),
+ "Part" CHAR(20),
+ "Seq" CHAR(6),
+ "WIP_Qty" NUMERIC(12,4),
+ "Material_Qty" NUMERIC(12,4),
+ "Material_Value" NUMERIC(12,4),
+ "WIP_Parts" NUMERIC(12,4),
+ "Labor_Value" NUMERIC(12,4),
+ "Overhead_Val" NUMERIC(12,4),
+ "Outside_Qty" NUMERIC(12,4),
+ "Outside_Val" NUMERIC(12,4),
+ "Die_Factor" NUMERIC(12,4),
+ "Die_Value" NUMERIC(12,4),
+ "BIRunID" BIGINT,
+ "LMO" CHAR(1));
